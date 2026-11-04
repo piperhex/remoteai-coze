@@ -3,7 +3,7 @@ import { Popconfirm } from "antd";
 import { Power } from "lucide-react";
 import {
   COZE_DESKTOP_READY, COZE_DESKTOP_STOP, COZE_DESKTOP_STOP_READY, isCozeDesktopState,
-} from "../../../../shared/coze/desktopBridge";
+} from "../../shared/coze/desktopBridge";
 import { useT } from "./i18n";
 
 export function StopCozeButton() {

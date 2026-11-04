@@ -7,6 +7,29 @@ Remote AI устанавливает этот необязательный ко�
 
 Go-бэкенд исходного проекта Coze не входит в пакет и не запускается; Docker, MySQL, Redis, Elasticsearch, Milvus, Python и Node.js не нужны.
 
+## Независимый репозиторий и запуск
+
+Исходный код: https://github.com/piperhex/remoteai-coze. Remote AI подключает его как подмодуль `apps/coze`.
+Зависимости, переводы, тесты и сборка находятся здесь; исходный код Remote AI не требуется.
+
+Распакуйте полный архив выпуска и создайте конфигурацию, не добавляя ключ в Git:
+
+```json
+{
+  "dataDir": "/absolute/path/to/coze-data",
+  "proxyUrl": "https://your-model-provider.example/v1",
+  "proxyToken": "YOUR_API_KEY"
+}
+```
+
+Запустите `./remoteai-coze --config config.json` (`remoteai-coze.exe` в Windows) и откройте полученный `url`.
+Путь данных должен быть абсолютным. Локальный провайдер может использовать `http://127.0.0.1:<port>/v1`;
+удалённый — HTTPS, список моделей и Chat Completions, совместимые с OpenAI. Учётные данные редактора
+создаются при запуске, файл состояния MCP `runtime.json` сохраняется в каталоге данных.
+Закрытие stdin не завершает независимый режим; для остановки нажмите Ctrl+C. Редактор доступен только
+локально. Протоколы интеграции `--serve` и `--coze-mcp=<runtime.json>` остаются совместимыми.
+
+
 ## Текущая реализация и ограничения
 
 | Задача в исходном проекте | Реализация на Rust | Текущие возможности |
@@ -22,7 +45,7 @@ Go-бэкенд исходного проекта Coze не входит в па
 | Инструменты и MCP | `src/plugins.rs`, `src/mcp.rs` | Вызов приложений, рабочих процессов, агентов, баз знаний, инструментов, промптов и таблиц на этом компьютере и возобновление Chatflow; автоматическая регистрация в обоих Codex Home |
 | Таблицы | `src/tables/` | Типы полей, постраничный вывод, пакетный импорт в одной транзакции, создание, чтение, изменение и удаление записей, изолированный SQL, создание запросов по описанию на естественном языке с предпросмотром |
 
-Это перенос функций для работы на компьютере, а не замена HTTP/Thrift-API или базы данных Go-бэкенда исходного проекта. Импорт холста отклоняет узлы, для которых ещё нет реализации, и никогда не пропускает их молча. Подробное соответствие узлов описано в [заметках о переносе рабочих процессов](../../docs/coze-workflow-parity.md), а объём поддержки баз знаний и SQL — в [заметках о переносе баз знаний](../../docs/coze-knowledge-parity.md) (обе на китайском языке).
+Это перенос функций для работы на компьютере, а не замена HTTP/Thrift-API или базы данных Go-бэкенда исходного проекта. Импорт холста отклоняет узлы, для которых ещё нет реализации, и никогда не пропускает их молча. Подробное соответствие узлов описано в [заметках о переносе рабочих процессов](docs/coze-workflow-parity.md), а объём поддержки баз знаний и SQL — в [заметках о переносе баз знаний](docs/coze-knowledge-parity.md) (обе на китайском языке).
 
 Python использует ограниченный синтаксис Python и стандартную библиотеку Monty и поддерживает точку входа исходного проекта `async def main(args)`; произвольные сторонние пакеты pip и доступ к файлам или сети хоста не поддерживаются. Каждый запуск выполняется в отдельном дочернем процессе Rust с ограничениями по памяти и времени. TypeScript транспилируется на этом компьютере и затем выполняется в ограниченном QuickJS. Поддержку языков нельзя описывать как полноценную среду CPython или Node.
 
@@ -69,18 +92,18 @@ Python использует ограниченный синтаксис Python �
 Выполните в корне репозитория:
 
 ```powershell
-cargo test --manifest-path apps/coze/Cargo.toml
-cargo clippy --manifest-path apps/coze/Cargo.toml --all-targets -- -D warnings
-node node_modules/typescript/bin/tsc -p apps/coze/ui/tsconfig.json
-node node_modules/vite/bin/vite.js build --config apps/coze/ui/vite.config.ts
-npm run test -w @codex-switch/coze
+cargo test --manifest-path Cargo.toml
+cargo clippy --manifest-path Cargo.toml --all-targets -- -D warnings
+node node_modules/typescript/bin/tsc -p ui/tsconfig.json
+node node_modules/vite/bin/vite.js build --config ui/vite.config.ts
+npm test
 npx playwright install chromium
-npm run test:e2e -w @codex-switch/coze
+npm run test:e2e
 node scripts/prepare-coze-model.mjs
-cargo test --manifest-path apps/coze/Cargo.toml --test local_embedding -- --ignored
+cargo test --manifest-path Cargo.toml --test local_embedding -- --ignored
 $env:RUSTFLAGS = "-C target-feature=+crt-static"
-cargo build --bins --manifest-path apps/coze/Cargo.toml
-node scripts/package-coze.mjs apps/coze/target/debug/remoteai-coze.exe .codex-tmp/coze-package
+cargo build --bins --manifest-path Cargo.toml
+node scripts/package-coze.mjs target/debug/remoteai-coze.exe .codex-tmp/coze-package
 node scripts/verify-windows-runtime.mjs .codex-tmp/coze-package/remoteai-coze.exe
 node scripts/verify-windows-runtime.mjs .codex-tmp/coze-package/remoteai-coze-python.exe
 node scripts/smoke-coze.mjs .codex-tmp/coze-package/remoteai-coze.exe
@@ -95,10 +118,17 @@ node scripts/smoke-coze.mjs .codex-tmp/coze-package/remoteai-coze.exe
 Скрипт также проверяет полное восстановление базы, поэтому ему нужна пустая отдельная рабочая область для приёмочных тестов. Передайте `runtime.json`, ID модели, путь к отчёту, тестовое изображение и отсканированный PDF;
 оба файла с изображениями должны содержать текст `Verification code: VX-84620`. В отчёт записываются только результаты тестов, учётные данные запуска в него не попадают.
 
-## Отдельный выпуск
+## Независимые выпуски
 
-`.github/workflows/coze-runtime.yml` собирает отдельные ZIP-архивы для Windows x64/ARM64, macOS x64/ARM64 и Linux x64. В каждый входят обе программы на Rust, редактор на React, модель для баз знаний и тексты лицензий. Тег выпуска берётся из `runtime.json`, сейчас это `coze-v0.2.1`. Выпуск не помечается как последний (latest) выпуск Remote AI, и правило тегов `v*` основного приложения не запускает его повторно.
+`.github/workflows/ci.yml` проверяет main и PR, собирая ZIP для Windows x64/ARM64, macOS x64/ARM64
+и Linux x64. Подписание и публикация выполняются только для тегов `coze-v*` или ручного запуска с publish.
+Готовые выпуски в этом репозитории неизменяемы.
 
-Основной сценарий выпуска вызывает этот сценарий CI; его также можно запустить вручную отдельно. Пакет подписывается существующим ключом `TAURI_SIGNING_PRIVATE_KEY`, а приложение для компьютера проверяет подпись встроенным открытым ключом перед распаковкой. Опубликованные версии нельзя перезаписать: при любом изменении уже опубликованного пакета нужно одновременно обновить версию Cargo и `runtime.json`. Загрузчик закреплён за совместимой версией, поэтому изменение протокола среды выполнения требует соответствующей доработки приложения для компьютера.
+Версии `Cargo.toml`, `Cargo.lock`, `package.json`, `package-lock.json` и `runtime.json` должны совпадать.
+Секрет `COZE_SIGNING_PRIVATE_KEY` содержит отдельный закрытый ключ; `runtime.json.publicKey` — открытый.
+Храните резервную копию закрытого ключа вне Git. Remote AI проверяет готовые пакеты, а не запускает сборку.
+Его отдельный `shared/coze/runtime.json` обновляется только после успешного выпуска.
 
-Успешная локальная сборка не означает, что прошли сборки для всех пяти платформ и подписанный выпуск на GitHub. Для загрузки в рабочей среде соответствующие задачи CI должны успешно опубликовать выпуск; не считайте ещё не существующий выпуск уже доступным.
+Проверки: `npm ci`, `npm run check`, `npm run test:e2e`, `cargo fmt --check`, `cargo test --locked`,
+`cargo clippy --locked --all-targets -- -D warnings`. Для реальных тестов эмбеддингов и готового пакета
+сначала выполните `npm run prepare:model`.

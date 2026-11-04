@@ -1,9 +1,9 @@
 /// <reference types="vite/client" />
 import { useMemo, useSyncExternalStore } from "react";
-import { COZE_DESKTOP_STATE } from "../../../../../shared/coze/desktopBridge";
+import { COZE_DESKTOP_STATE } from "../../../shared/coze/desktopBridge";
 import {
   deviceLanguage, localeForLanguage,
-} from "../../../../../shared/localization/language";
+} from "../../../shared/localization/language";
 import { createI18n, isAppLanguage, interpolate, type AppLanguage, type MessageKey } from '@remoteai/i18n';
 import { resources } from '@remoteai/i18n/coze';
 import { createErrorFormatter } from '@remoteai/i18n/errors';

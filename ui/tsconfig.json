@@ -2,7 +2,13 @@
   "compilerOptions": {
     "target": "ES2022", "lib": ["ES2022", "DOM", "DOM.Iterable"], "module": "ESNext",
     "moduleResolution": "Bundler", "jsx": "react-jsx", "strict": true, "skipLibCheck": true,
-    "esModuleInterop": true, "resolveJsonModule": true, "noEmit": true
+    "esModuleInterop": true, "resolveJsonModule": true, "noEmit": true,
+    "paths": {
+      "@remoteai/i18n": ["../packages/i18n/src/index.ts"],
+      "@remoteai/i18n/coze": ["../packages/i18n/src/catalogs/coze/index.ts"],
+      "@remoteai/i18n/errors": ["../packages/i18n/src/errors.ts"],
+      "@remoteai/i18n/copy/*": ["../packages/i18n/src/copy/*"]
+    }
   },
   "include": ["src"]
 }

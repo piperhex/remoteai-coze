@@ -38,9 +38,19 @@ pub struct ModelProxy {
 
 impl ModelProxy {
     pub fn new(base: &str, token: String) -> Result<Self> {
+        Self::connect(base, token, false)
+    }
+
+    /// Explicit standalone configuration may use HTTPS model providers without a desktop proxy.
+    pub fn standalone(base: &str, token: String) -> Result<Self> {
+        Self::connect(base, token, true)
+    }
+
+    fn connect(base: &str, token: String, standalone: bool) -> Result<Self> {
         let url = url::Url::parse(base).map_err(|_| Error::Invalid)?;
-        if url.scheme() != "http"
-            || url.host_str() != Some("127.0.0.1")
+        let loopback = url.scheme() == "http" && url.host_str() == Some("127.0.0.1");
+        let provider = standalone && url.scheme() == "https" && url.host_str().is_some();
+        if !(loopback || provider)
             || !url.username().is_empty()
             || url.password().is_some()
             || url.query().is_some()

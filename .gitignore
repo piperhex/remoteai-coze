@@ -1,2 +1,9 @@
 /target/
 /dist/
+node_modules/
+/.codex-tmp/
+/test-results/
+/playwright-report/
+/.env
+/.signing/
+*.log

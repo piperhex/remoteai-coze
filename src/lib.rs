@@ -2,6 +2,7 @@
 pub mod agents;
 pub mod api;
 pub mod backup;
+pub mod bootstrap;
 pub mod catalog;
 pub mod code_runtime;
 pub mod collaboration_access;

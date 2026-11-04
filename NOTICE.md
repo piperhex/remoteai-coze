@@ -27,3 +27,7 @@ Their license notices are included in licenses/ in the release archive.
 
 Workflow canvas: React Flow 12, https://github.com/xyflow/xyflow (MIT).
 Both @xyflow/react and @xyflow/system are covered by licenses/XYFLOW-MIT.
+
+Extracted from https://github.com/piperhex/remoteai at commit 2f030f01b33e82ca1134fa6b99aa370551767c1a.
+The Coze subtree history is retained. Shared i18n engine and build tooling were imported
+under the same Apache-2.0 license; Coze resources are now maintained only in this repository.

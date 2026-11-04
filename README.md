@@ -6,6 +6,29 @@ Remote AI 通过左侧「插件」下方的 `coze` 入口安装此可选组件�
 
 没有打包或启动上游 Go 后端，也不需要 Docker、MySQL、Redis、Elasticsearch、Milvus、Python 或 Node.js 运行环境。
 
+## 独立仓库与启动
+
+源码位于 https://github.com/piperhex/remoteai-coze；Remote AI 将此仓库作为 `apps/coze` 子模块。
+所有依赖、翻译、测试和发布工具均在本仓库内维护，可以直接 clone 后构建，无需 Remote AI 源码。
+
+下载并解压完整发布包后，创建自己的配置文件（请勿提交模型密钥）：
+
+```json
+{
+  "dataDir": "F:/coze-data",
+  "proxyUrl": "https://your-model-provider.example/v1",
+  "proxyToken": "YOUR_API_KEY"
+}
+```
+
+运行 `remoteai-coze.exe --config config.json`（macOS/Linux 使用 `./remoteai-coze`），
+打开终端返回的 `url` 即可使用编辑器。`dataDir` 必须是绝对路径；本机代理可使用
+`http://127.0.0.1:<port>/v1`，远程服务须使用 HTTPS，并支持模型列表与 Chat Completions。
+启动时自动生成编辑器凭据，MCP 状态保存在数据目录的 `runtime.json`。
+独立模式不依赖 stdin 或 Remote AI 进程，按 Ctrl+C 结束。编辑器仍只监听本机。
+桌面集成继续使用兼容的 `--serve` 和 `--coze-mcp=<runtime.json>` 协议。
+
+
 ## 当前实现与边界
 
 | 上游职责 | Rust 实现 | 当前能力 |
@@ -21,7 +44,7 @@ Remote AI 通过左侧「插件」下方的 `coze` 入口安装此可选组件�
 | 工具与 MCP | `src/plugins.rs`、`src/mcp.rs` | 应用/工作流/智能体/知识库/工具/提示词/表的 PC 调用及 Chatflow 恢复；自动注册两个 Codex Home |
 | 数据表 | `src/tables/` | 字段类型、分页、事务批量导入、增删改查、隔离 SQL、自然语言生成查询并预览 |
 
-这是面向桌面使用的功能迁移，不是上游 Go HTTP/Thrift 接口或数据库的替代服务。画布导入会拒绝尚无对应实现的节点，不能静默跳过。详细节点映射见 [工作流迁移说明](../../docs/coze-workflow-parity.md)，知识库和 SQL 的范围见 [知识库迁移说明](../../docs/coze-knowledge-parity.md)。
+这是面向桌面使用的功能迁移，不是上游 Go HTTP/Thrift 接口或数据库的替代服务。画布导入会拒绝尚无对应实现的节点，不能静默跳过。详细节点映射见 [工作流迁移说明](docs/coze-workflow-parity.md)，知识库和 SQL 的范围见 [知识库迁移说明](docs/coze-knowledge-parity.md)。
 
 Python 使用 Monty 的受限 Python 语法和标准库，支持上游 `async def main(args)` 入口；不支持任意第三方 pip 包或宿主文件/网络访问。每次在独立 Rust 子进程中执行，有内存和时间上限。TypeScript 在本机转译后进入受限 QuickJS。代码语言兼容性不能描述成完整 CPython/Node 环境。
 
@@ -68,18 +91,18 @@ Python 使用 Monty 的受限 Python 语法和标准库，支持上游 `async de
 在仓库根目录执行：
 
 ```powershell
-cargo test --manifest-path apps/coze/Cargo.toml
-cargo clippy --manifest-path apps/coze/Cargo.toml --all-targets -- -D warnings
-node node_modules/typescript/bin/tsc -p apps/coze/ui/tsconfig.json
-node node_modules/vite/bin/vite.js build --config apps/coze/ui/vite.config.ts
-npm run test -w @codex-switch/coze
+cargo test --manifest-path Cargo.toml
+cargo clippy --manifest-path Cargo.toml --all-targets -- -D warnings
+node node_modules/typescript/bin/tsc -p ui/tsconfig.json
+node node_modules/vite/bin/vite.js build --config ui/vite.config.ts
+npm test
 npx playwright install chromium
-npm run test:e2e -w @codex-switch/coze
+npm run test:e2e
 node scripts/prepare-coze-model.mjs
-cargo test --manifest-path apps/coze/Cargo.toml --test local_embedding -- --ignored
+cargo test --manifest-path Cargo.toml --test local_embedding -- --ignored
 $env:RUSTFLAGS = "-C target-feature=+crt-static"
-cargo build --bins --manifest-path apps/coze/Cargo.toml
-node scripts/package-coze.mjs apps/coze/target/debug/remoteai-coze.exe .codex-tmp/coze-package
+cargo build --bins --manifest-path Cargo.toml
+node scripts/package-coze.mjs target/debug/remoteai-coze.exe .codex-tmp/coze-package
 node scripts/verify-windows-runtime.mjs .codex-tmp/coze-package/remoteai-coze.exe
 node scripts/verify-windows-runtime.mjs .codex-tmp/coze-package/remoteai-coze-python.exe
 node scripts/smoke-coze.mjs .codex-tmp/coze-package/remoteai-coze.exe
@@ -96,8 +119,15 @@ Windows 构建使用静态 C 运行库，并检查两个程序的 DLL 导入，�
 
 ## 独立发布
 
-`.github/workflows/coze-runtime.yml` 构建 Windows x64/ARM64、macOS x64/ARM64、Linux x64 的独立 ZIP，包含两个 Rust 程序、React 编辑器、知识库模型及许可文本。发布标签来自 `runtime.json`，当前为 `coze-v0.2.1`；不会设为 Remote AI 的 latest，也不会被主应用 `v*` 标签规则重新触发。
+`.github/workflows/ci.yml` 在 main 推送和 PR 中执行完整检查，并构建 Windows x64/ARM64、
+macOS x64/ARM64、Linux x64 的 ZIP。只有 `coze-v*` 标签或手动勾选 publish 才签名并发布。
+发布位置为本仓库的 GitHub Releases，已发布包不可覆盖。
 
-主发布流程调用此工作流；也可以单独手动运行。包使用现有 `TAURI_SIGNING_PRIVATE_KEY` 签名，桌面端使用内置公钥验证后再解压。已发布版本不可覆盖，修改已发布运行包时必须同步更新 Cargo 版本及 `runtime.json`。下载端固定兼容版本，更新运行协议必须同步桌面适配。
+发布前同步更新 `Cargo.toml`、`Cargo.lock`、`package.json`、`package-lock.json` 和 `runtime.json`。
+仓库 Secret `COZE_SIGNING_PRIVATE_KEY` 保存专用签名私钥；`runtime.json.publicKey` 是对应公钥。
+维护者应妥善备份私钥，不能提交到 Git。主应用发布只检查已发布包，不再调用本仓库的构建。
+Remote AI 的 `shared/coze/runtime.json` 单独锁定已验证的版本、公钥和协议；发布成功后再更新。
 
-本地构建通过不代表五个平台或 GitHub 签名发布已通过；生产下载需要对应 CI 任务成功发布，不能把尚不存在的 release 当作已经上线。
+开发检查：`npm ci`、`npm run check`、`npm run test:e2e`、`cargo fmt --check`、
+`cargo test --locked`、`cargo clippy --locked --all-targets -- -D warnings`。
+先运行 `npm run prepare:model`，再执行真实向量测试和完整打包冒烟测试。

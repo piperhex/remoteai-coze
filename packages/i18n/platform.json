@@ -1,0 +1,10 @@
+{
+  "mirrors": [],
+  "sections": [
+    {
+      "source": "platform/coze/builtin-template.rs",
+      "target": "src/catalog.rs",
+      "name": "builtin-template"
+    }
+  ]
+}

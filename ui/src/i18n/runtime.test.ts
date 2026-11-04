@@ -47,7 +47,7 @@ function importReasons(): string[] {
 
 /** Messages the runtime stores in runs.error for runs that were interrupted by a restart. */
 function persistedRunErrors(): string[] {
-  return ["main.rs", "workflow/checkpoint.rs"].flatMap((path) => literals(withoutTests(read(path)))
+  return ["bootstrap.rs", "workflow/checkpoint.rs"].flatMap((path) => literals(withoutTests(read(path)))
     .filter((value) => HAN.test(value))
     // SQL text: take the quoted value (`error='…'`); a bound parameter is the literal itself.
     .flatMap((value) => {

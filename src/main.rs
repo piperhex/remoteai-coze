@@ -1,27 +1,11 @@
 use remoteai_coze::{
-    api::Services,
-    database::Database,
-    embedding::LocalEmbedder,
+    bootstrap::{self, Bootstrap},
     error::{Error, Result},
     mcp,
-    proxy::ModelProxy,
-    server::Host,
 };
-use serde::Deserialize;
-use std::{
-    io::{BufRead, Write},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{io::BufRead, path::PathBuf};
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Bootstrap {
-    data_dir: PathBuf,
-    token: String,
-    proxy_url: String,
-    proxy_token: String,
-}
+const MAX_BOOTSTRAP_BYTES: u64 = 8192;
 
 fn main() {
     if let Err(error) = run() {
@@ -31,61 +15,41 @@ fn main() {
 }
 
 fn run() -> Result<()> {
-    let argument = std::env::args().nth(1).ok_or(Error::Invalid)?;
+    let mut arguments = std::env::args().skip(1);
+    let argument = arguments.next().ok_or(Error::Invalid)?;
     if let Some(path) = argument.strip_prefix("--coze-mcp=") {
         return mcp::run_stdio(&PathBuf::from(path));
     }
-    if argument == "--version" {
-        println!("{}", env!("CARGO_PKG_VERSION"));
-        return Ok(());
-    }
-    if argument != "--serve" {
-        return Err(Error::Invalid);
-    }
-    let mut line = String::new();
-    std::io::stdin().lock().read_line(&mut line)?;
-    if line.len() > 8192 {
-        return Err(Error::Invalid);
-    }
-    let config: Bootstrap = serde_json::from_str(&line).map_err(|_| Error::Invalid)?;
-    if !config.data_dir.is_absolute() {
-        return Err(Error::Invalid);
-    }
-    let root = std::env::current_exe()?
-        .parent()
-        .ok_or(Error::Invalid)?
-        .to_owned();
-    let db = Database::open(&config.data_dir)?;
-    db.connect()?.execute(
-        "UPDATE runs SET status='interrupted',error='上次运行已中断。'
-        WHERE status='running'",
-        [],
-    )?;
-    let services = Arc::new(Services::new(
-        db,
-        Arc::new(LocalEmbedder::new(&root.join("models"))),
-        ModelProxy::new(&config.proxy_url, config.proxy_token)?,
-    ));
-    let host = Arc::new(Host::bind(config.token, root.join("ui"))?);
-    if let Err(error) = remoteai_coze::external::restore(&services) {
-        eprintln!("Coze external tools were not restarted: {error}");
-    }
-    println!(
-        "{}",
-        serde_json::json!({"url":host.url,"version":env!("CARGO_PKG_VERSION")})
-    );
-    std::io::stdout().flush()?;
-    // The parent's pipe is the lease. App crashes and normal shutdown both terminate this child.
-    std::thread::Builder::new()
-        .name("coze-parent".into())
-        .spawn(|| {
+    match argument.as_str() {
+        "--version" => {
+            println!("{}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
+        "--serve" if arguments.next().is_none() => {
             let mut line = String::new();
-            loop {
-                match std::io::stdin().read_line(&mut line) {
-                    Ok(0) | Err(_) => std::process::exit(0),
-                    Ok(_) => line.clear(),
-                }
+            std::io::Read::take(std::io::stdin().lock(), MAX_BOOTSTRAP_BYTES + 1)
+                .read_line(&mut line)?;
+            bootstrap::serve(parse(&line)?, true)
+        }
+        "--config" => {
+            let path = arguments.next().ok_or(Error::Invalid)?;
+            if arguments.next().is_some() {
+                return Err(Error::Invalid);
             }
-        })?;
-    host.run(services)
+            let mut text = String::new();
+            std::io::Read::read_to_string(
+                &mut std::io::Read::take(std::fs::File::open(path)?, MAX_BOOTSTRAP_BYTES + 1),
+                &mut text,
+            )?;
+            bootstrap::serve(parse(&text)?, false)
+        }
+        _ => Err(Error::Invalid),
+    }
+}
+
+fn parse(text: &str) -> Result<Bootstrap> {
+    if text.len() as u64 > MAX_BOOTSTRAP_BYTES {
+        return Err(Error::Invalid);
+    }
+    serde_json::from_str(text).map_err(|_| Error::Invalid)
 }

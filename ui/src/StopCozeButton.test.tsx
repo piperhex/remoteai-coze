@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { expect, it, vi } from 'vitest';
 import { COZE_DESKTOP_READY, COZE_DESKTOP_STATE, COZE_DESKTOP_STOP_READY }
-  from '../../../../shared/coze/desktopBridge';
+  from '../../shared/coze/desktopBridge';
 import { StopCozeButton } from './StopCozeButton';
 import { setLanguage } from './i18n';
 

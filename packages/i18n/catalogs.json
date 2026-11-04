@@ -1,0 +1,15 @@
+{
+  "coze": {
+    "applications": [
+      "coze"
+    ],
+    "base": "en",
+    "released": [
+      "zh",
+      "en",
+      "ru",
+      "ja"
+    ],
+    "draft": []
+  }
+}

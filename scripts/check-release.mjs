@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const root = new URL('../', import.meta.url);
+const read = name => readFileSync(new URL(name, root), 'utf8');
+const registry = JSON.parse(read('runtime.json'));
+const packageJson = JSON.parse(read('package.json'));
+const cargo = read('Cargo.toml').match(/^version = "([^"]+)"/m)?.[1];
+assert.equal(cargo, registry.version);
+assert.equal(packageJson.version, registry.version);
+assert.equal(registry.releaseTag, `coze-v${registry.version}`);
+assert.equal(registry.repository, 'piperhex/remoteai-coze');
+assert.equal(registry.protocol, 1);
+if (process.env.GITHUB_REF_TYPE === 'tag') assert.equal(process.env.GITHUB_REF_NAME, registry.releaseTag);
+console.log(`Verified ${registry.releaseTag} (protocol ${registry.protocol})`);

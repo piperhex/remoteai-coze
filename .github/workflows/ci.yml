@@ -1,0 +1,206 @@
+name: Coze CI and Release
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['coze-v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the version declared in runtime.json
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coze-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Check and build Coze UI
+        run: |
+          npm run check
+          node scripts/check-release.mjs
+      - name: Check workflow canvas interactions
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+      - uses: actions/cache@v4
+        with:
+          path: dist/models
+          key: coze-model-${{ hashFiles('runtime.json', 'scripts/prepare-coze-model.mjs') }}
+      - run: node scripts/prepare-coze-model.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coze-assets
+          path: dist
+          compression-level: 0
+
+  runtime:
+    needs: assets
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x86_64
+            os: windows-2022
+            target: x86_64-pc-windows-msvc
+            extension: .exe
+            msvcArch: amd64
+          - name: windows-aarch64
+            os: windows-2022
+            target: aarch64-pc-windows-msvc
+            extension: .exe
+            msvcArch: amd64_arm64
+          - name: macos-aarch64
+            os: macos-latest
+            target: aarch64-apple-darwin
+            extension: ""
+          - name: macos-x86_64
+            os: macos-latest
+            target: x86_64-apple-darwin
+            extension: ""
+          - name: linux-x86_64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            extension: ""
+    runs-on: ${{ matrix.os }}
+    env:
+      # The optional Windows package must run without installing a separate VC++ runtime.
+      RUSTFLAGS: ${{ startsWith(matrix.name, 'windows') && '-C target-feature=+crt-static' || '' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          components: rustfmt, clippy
+      - name: Configure Windows compiler
+        if: startsWith(matrix.name, 'windows')
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvcArch }}
+      - name: Configure Windows ARM64 bindings
+        if: matrix.name == 'windows-aarch64'
+        shell: pwsh
+        run: |
+          $llvm = Join-Path $env:ProgramFiles 'LLVM/bin'
+          if (-not (Test-Path (Join-Path $llvm 'libclang.dll'))) {
+            throw 'LLVM libclang is required to generate Windows ARM64 JavaScript bindings.'
+          }
+          "LIBCLANG_PATH=$llvm" >> $env:GITHUB_ENV
+          $llvm >> $env:GITHUB_PATH
+      - uses: swatinem/rust-cache@v2
+        with:
+          key: coze-${{ matrix.name }}
+          workspaces: .
+      - uses: actions/download-artifact@v4
+        with:
+          name: coze-assets
+          path: dist
+      - name: Check Rust formatting
+        run: cargo fmt --check
+      - name: Test Rust services
+        run: cargo test --locked
+      - name: Test local embeddings
+        run: cargo test --locked --test local_embedding -- --ignored
+      - name: Lint Rust services
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Build standalone runtime
+        run: cargo build --bins --release --locked --manifest-path Cargo.toml --target ${{ matrix.target }}
+      - run: npm ci
+      - name: Verify Windows runtime independence
+        if: startsWith(matrix.name, 'windows')
+        run: |
+          node scripts/verify-windows-runtime.mjs target/${{ matrix.target }}/release/remoteai-coze.exe
+          node scripts/verify-windows-runtime.mjs target/${{ matrix.target }}/release/remoteai-coze-python.exe
+      - name: Stage independent package
+        run: >-
+          node scripts/package-coze.mjs
+          target/${{ matrix.target }}/release/remoteai-coze${{ matrix.extension }}
+          dist/package
+      - name: Exercise packaged runtime and MCP
+        if: matrix.name != 'windows-aarch64' && matrix.name != 'macos-x86_64'
+        run: node scripts/smoke-coze.mjs dist/package/remoteai-coze${{ matrix.extension }}
+      - name: Exercise standalone startup and MCP
+        if: matrix.name != 'windows-aarch64' && matrix.name != 'macos-x86_64'
+        run: node scripts/smoke-coze.mjs dist/package/remoteai-coze${{ matrix.extension }} --standalone
+      - name: Archive package
+        shell: bash
+        run: |
+          python -c "import shutil; shutil.make_archive('dist/coze-${{ matrix.name }}','zip','dist/package')"
+      - name: Sign package
+        if: startsWith(github.ref, 'refs/tags/coze-v') || (github.event_name == 'workflow_dispatch' && inputs.publish)
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.COZE_SIGNING_PRIVATE_KEY }}
+        run: npx tauri signer sign --password "" "dist/coze-${{ matrix.name }}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coze-${{ matrix.name }}
+          path: |
+            dist/coze-${{ matrix.name }}.zip
+            dist/coze-${{ matrix.name }}.zip.sig
+          compression-level: 0
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/coze-v') || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    needs: runtime
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: coze-*
+          merge-multiple: true
+          path: release-coze
+      - name: Publish independent, immutable release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$(node -p "require('./runtime.json').releaseTag")"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" = "false" ]; then
+              gh release view "$tag" --json assets --jq '.assets[].name' > /tmp/coze-assets.txt
+              for platform in windows-x86_64 windows-aarch64 macos-x86_64 macos-aarch64 linux-x86_64; do
+                grep -Fx "coze-$platform.zip" /tmp/coze-assets.txt
+                grep -Fx "coze-$platform.zip.sig" /tmp/coze-assets.txt
+              done
+              echo "Coze release $tag is complete; published packages are immutable."
+              exit 0
+            fi
+          else
+            gh release create "$tag" --draft --target "$(git rev-parse HEAD)" \
+              --title "Coze Rust Runtime $tag" --latest=false \
+              --notes "Independent Coze runtime and Remote AI submodule. Includes the editor, Python worker and local knowledge models."
+          fi
+          gh release upload "$tag" release-coze/coze-*.zip release-coze/coze-*.zip.sig --clobber
+          gh release edit "$tag" --draft=false --latest=false

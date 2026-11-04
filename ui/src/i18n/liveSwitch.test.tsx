@@ -8,7 +8,7 @@ import ruRU from "antd/locale/ru_RU";
 import jaJP from "antd/locale/ja_JP";
 import zhCN from "antd/locale/zh_CN";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { COZE_DESKTOP_STATE } from "../../../../../shared/coze/desktopBridge";
+import { COZE_DESKTOP_STATE } from "../../../shared/coze/desktopBridge";
 import { Studio } from "../Studio";
 import type { Resource } from "../types";
 import { getLanguage, LANGUAGE_STORAGE_KEY, setLanguage, useLanguage, type Language } from "./index";
